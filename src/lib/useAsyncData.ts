@@ -1,0 +1,31 @@
+import { useEffect, useState } from "react";
+
+export type AsyncState<T> =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "success"; data: T };
+
+export function useAsyncData<T>(
+  fetcher: (signal: AbortSignal) => Promise<T>,
+  deps: unknown[],
+): [AsyncState<T>, () => void] {
+  const [reloadToken, setReloadToken] = useState(0);
+  const [state, setState] = useState<AsyncState<T>>({ status: "loading" });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ status: "loading" });
+    fetcher(controller.signal)
+      .then((data) => setState({ status: "success", data }))
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setState({
+          status: "error",
+          message: error instanceof Error ? error.message : "Đã có lỗi xảy ra",
+        });
+      });
+    return () => controller.abort();
+  }, [...deps, reloadToken]);
+
+  return [state, () => setReloadToken((token) => token + 1)];
+}

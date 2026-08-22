@@ -1,0 +1,508 @@
+Table tenants {
+  id uuid [pk]
+  name varchar
+  created_at timestamp
+}
+
+Table tenant_settings {
+  id uuid [pk]
+  tenant_id uuid [ref: - tenants.id]
+  face_match_threshold decimal
+  max_face_retries int
+}
+
+Table branches {
+  id uuid [pk]
+  tenant_id uuid [ref: > tenants.id]
+  name varchar
+  timezone varchar
+  currency varchar
+  weekly_off_days json [null]
+  created_at timestamp
+  deleted_at timestamp [null]
+}
+
+Table departments {
+  id uuid [pk]
+  tenant_id uuid [ref: > tenants.id]
+  branch_id uuid [ref: > branches.id]
+  name varchar
+  code varchar
+  created_at timestamp
+}
+
+Table holidays {
+  id uuid [pk]
+  tenant_id uuid [ref: > tenants.id, null]
+  branch_id uuid [ref: > branches.id, null]
+  name varchar
+  start_date date
+  end_date date
+  created_at timestamp
+}
+
+enum employee_status {
+  active
+  probation
+  suspended
+  terminated
+}
+
+Table employees {
+  id uuid [pk]
+  tenant_id uuid [ref: > tenants.id]
+  branch_id uuid [ref: > branches.id]
+  department_id uuid [ref: > departments.id, null]
+  employee_code varchar
+  status employee_status
+  full_name varchar
+  termination_date date [null]
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp [null]
+}
+
+enum pay_basis {
+  hourly
+  daily
+  shift
+  monthly
+}
+
+Table employee_compensation_history {
+  id uuid [pk]
+  tenant_id uuid [ref: > tenants.id]
+  branch_id uuid [ref: > branches.id]
+  employee_id uuid [ref: > employees.id]
+  contract_type varchar
+  pay_basis pay_basis
+  rate decimal
+  effective_from date
+  effective_to date [null]
+  created_at timestamp
+}
+
+Table users {
+  id uuid [pk]
+  tenant_id uuid [ref: > tenants.id]
+  employee_id uuid [ref: - employees.id, null]
+  email varchar
+  full_name varchar
+  phone varchar [null]
+  password_hash varchar
+  password_reset_token varchar [null]
+  password_reset_expires timestamp [null]
+  created_at timestamp
+  deleted_at timestamp [null]
+}
+
+Table auth_sessions {
+  id uuid [pk]
+  user_id uuid [ref: > users.id]
+  family_id uuid
+  refresh_token_hash varchar
+  device_info varchar [null]
+  ip_address varchar [null]
+  expires_at timestamp
+  last_used_at timestamp [null]
+  revoked_at timestamp [null]
+  revoked_reason varchar [null]
+  created_at timestamp
+}
+
+enum branch_role {
+  owner
+  manager
+  accountant
+  staff
+}
+
+Table user_branch_roles {
+  id uuid [pk]
+  user_id uuid [ref: > users.id]
+  branch_id uuid [ref: > branches.id, null]
+  role branch_role
+  created_at timestamp
+}
+
+Table biometric_consents {
+  id uuid [pk]
+  employee_id uuid [ref: > employees.id]
+  consented_at timestamp
+  revoked_at timestamp [null]
+}
+
+Table biometric_deletion_logs {
+  id uuid [pk]
+  employee_id uuid [ref: > employees.id]
+  deleted_at timestamp
+  reason varchar
+}
+
+Table face_embedding_samples {
+  id uuid [pk]
+  employee_id uuid [ref: > employees.id]
+  descriptor vector
+  model_version varchar
+  angle_label varchar
+  created_at timestamp
+}
+
+enum kiosk_status {
+  active
+  inactive
+  flagged
+}
+
+Table kiosks {
+  id uuid [pk]
+  tenant_id uuid [ref: > tenants.id] 
+  branch_id uuid [ref: > branches.id]
+  device_name varchar
+  status kiosk_status
+  last_seen_at timestamp [null]
+  created_at timestamp
+  deleted_at timestamp [null]
+}
+
+enum verification_result {
+  matched
+  no_match
+  liveness_failed
+}
+
+Table face_verification_logs {
+  id uuid [pk]
+  branch_id uuid [ref: > branches.id]
+  kiosk_id uuid [ref: > kiosks.id]
+  employee_id uuid [ref: > employees.id, null]
+  result verification_result
+  confidence_score decimal
+  idempotency_key varchar [unique]
+  occurred_at timestamp
+  recorded_at timestamp
+}
+
+Table shift_templates {
+  id uuid [pk]
+  branch_id uuid [ref: > branches.id]
+  name varchar
+  start_time time
+  end_time time
+  is_overnight boolean
+  break_duration_minutes int
+  allow_late_minutes int
+  allow_early_leave_minutes int
+  created_at timestamp
+  deleted_at timestamp [null]
+}
+
+enum shift_status {
+  draft
+  published
+  confirmed
+  change_requested
+  in_progress
+  completed
+  cancelled
+}
+
+Table shifts {
+  id uuid [pk]
+  tenant_id uuid [ref: > tenants.id]
+  branch_id uuid [ref: > branches.id]
+  employee_id uuid [ref: > employees.id]
+  shift_template_id uuid [ref: > shift_templates.id, null]
+  start_time timestamp
+  end_time timestamp
+  status shift_status
+  confirmed_by uuid [ref: > users.id, null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+enum attendance_event_type {
+  check_in
+  check_out
+  break_start
+  break_end
+  manager_adjust
+}
+
+enum attendance_method {
+  face_id
+  qr_fallback
+  pin_fallback
+}
+
+Table attendance_events {
+  id uuid [pk]
+  tenant_id uuid [ref: > tenants.id]
+  branch_id uuid [ref: > branches.id]
+  employee_id uuid [ref: > employees.id]
+  shift_id uuid [ref: > shifts.id, null]
+  verification_log_id uuid [ref: - face_verification_logs.id, null]
+  event_type attendance_event_type
+  method attendance_method
+  location json [null]
+  payload json
+  idempotency_key varchar [unique]
+  occurred_at timestamp
+  recorded_at timestamp
+}
+
+Table attendance_fallback_codes {
+  id uuid [pk]
+  employee_id uuid [ref: > employees.id]
+  code varchar
+  expires_at timestamp
+  used_at timestamp [null]
+}
+
+enum attendance_summary_status {
+  present
+  absent
+  late
+  leave
+  holiday
+  off
+}
+
+Table daily_attendance_summaries {
+  id uuid [pk]
+  tenant_id uuid [ref: > tenants.id]
+  branch_id uuid [ref: > branches.id]
+  employee_id uuid [ref: > employees.id]
+  shift_id uuid [ref: > shifts.id, null]
+  date date
+  first_check_in timestamp [null]
+  last_check_out timestamp [null]
+  actual_work_hours decimal
+  late_minutes int
+  early_leave_minutes int
+  overtime_hours decimal
+  status attendance_summary_status
+  rebuilt_at timestamp
+}
+
+enum leave_category {
+  annual
+  sick
+  maternity
+  unpaid
+  other
+}
+
+enum leave_status {
+  draft
+  pending
+  approved
+  rejected
+  locked
+}
+
+Table leave_requests {
+  id uuid [pk]
+  tenant_id uuid [ref: > tenants.id]
+  branch_id uuid [ref: > branches.id]
+  employee_id uuid [ref: > employees.id]
+  category leave_category
+  is_paid boolean
+  start_date date
+  end_date date
+  duration_days decimal
+  status leave_status
+  reason varchar
+  approved_by uuid [ref: > users.id, null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table employee_leave_balances {
+  id uuid [pk]
+  tenant_id uuid [ref: > tenants.id]
+  branch_id uuid [ref: > branches.id]
+  employee_id uuid [ref: > employees.id]
+  year int
+  total_accrued decimal
+  used_days decimal
+  pending_days decimal
+  remaining_days decimal
+  updated_at timestamp
+}
+
+Table payroll_policies {
+  id uuid [pk]
+  tenant_id uuid [ref: > tenants.id]
+  type varchar
+  rate decimal
+  effective_from date
+  effective_to date [null]
+  created_at timestamp
+}
+
+enum payroll_status {
+  draft
+  pending_review
+  reviewed
+  locked
+}
+
+Table payroll_records {
+  id uuid [pk]
+  tenant_id uuid [ref: > tenants.id]
+  branch_id uuid [ref: > branches.id]
+  employee_id uuid [ref: > employees.id]
+  period varchar
+  status payroll_status
+  gross_amount decimal
+  social_insurance_amount decimal
+  tax_amount decimal
+  total_deductions decimal
+  net_amount decimal
+  currency varchar
+  created_by uuid [ref: > users.id]
+  reviewed_by uuid [ref: > users.id, null]
+  locked_by uuid [ref: > users.id, null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+enum payroll_item_type {
+  base_salary
+  allowance
+  bonus
+  penalty
+  tip
+  commission
+  unused_leave_payout
+}
+
+Table payroll_line_items {
+  id uuid [pk]
+  payroll_record_id uuid [ref: > payroll_records.id]
+  item_type payroll_item_type
+  amount decimal
+  note varchar
+}
+
+enum dispute_status {
+  open
+  resolved
+  rejected
+}
+
+Table payroll_disputes {
+  id uuid [pk]
+  payroll_record_id uuid [ref: > payroll_records.id]
+  raised_by uuid [ref: > users.id]
+  reason varchar
+  status dispute_status
+  resolved_by uuid [ref: > users.id, null]
+  created_at timestamp
+  resolved_at timestamp [null]
+}
+
+Table payroll_adjustments {
+  id uuid [pk]
+  payroll_record_id uuid [ref: > payroll_records.id]
+  adjusted_by uuid [ref: > users.id]
+  reason varchar
+  before_snapshot json
+  after_snapshot json
+  created_at timestamp
+}
+
+enum export_status {
+  pending
+  processing
+  completed
+  failed
+}
+
+enum export_type {
+  payroll
+  attendance
+}
+
+Table export_jobs {
+  id uuid [pk]
+  tenant_id uuid [ref: > tenants.id]
+  requested_by uuid [ref: > users.id]
+  export_type export_type
+  filters json
+  status export_status
+  file_url varchar [null]
+  created_at timestamp
+  completed_at timestamp [null]
+}
+
+enum notification_type {
+  leave_submitted
+  leave_approved
+  leave_rejected
+  shift_published
+  shift_change_requested
+  payroll_pending_review
+  payroll_reviewed
+  payroll_locked
+  export_completed
+}
+
+Table notifications {
+  id uuid [pk]
+  tenant_id uuid [ref: > tenants.id]
+  user_id uuid [ref: > users.id]
+  type notification_type
+  title varchar
+  body varchar
+  related_entity_id uuid [null]
+  read_at timestamp [null]
+  created_at timestamp
+}
+
+enum audit_action {
+  create
+  update
+  delete
+}
+
+Table audit_logs {
+  id uuid [pk]
+  tenant_id uuid [ref: > tenants.id]
+  actor_id uuid [ref: > users.id]
+  action audit_action
+  target_table varchar
+  target_id uuid
+  old_values json [null]
+  new_values json [null]
+  created_at timestamp
+}
+
+Indexes {
+  (employees.tenant_id, employees.employee_code) [unique]
+  (employees.tenant_id, employees.branch_id)
+  (departments.tenant_id, departments.branch_id)
+  (shifts.branch_id, shifts.employee_id)
+  (attendance_events.branch_id, attendance_events.occurred_at)
+  (attendance_events.employee_id, attendance_events.occurred_at)
+  (employee_compensation_history.employee_id, employee_compensation_history.effective_from)
+  (employee_compensation_history.tenant_id, employee_compensation_history.branch_id)
+  (payroll_policies.tenant_id, payroll_policies.effective_from)
+  (payroll_records.branch_id, payroll_records.period)
+  (face_verification_logs.kiosk_id, face_verification_logs.occurred_at)
+  (export_jobs.tenant_id, export_jobs.status)
+  (notifications.user_id, notifications.read_at)
+  (payroll_disputes.payroll_record_id)
+  (leave_requests.tenant_id, leave_requests.branch_id)
+  (audit_logs.tenant_id, audit_logs.target_table, audit_logs.target_id)
+  (holidays.tenant_id, holidays.branch_id, holidays.start_date)
+  (attendance_events.tenant_id, attendance_events.occurred_at)
+  (shifts.tenant_id, shifts.start_time)
+
+  (daily_attendance_summaries.employee_id, daily_attendance_summaries.date, daily_attendance_summaries.shift_id) [unique]
+  (daily_attendance_summaries.tenant_id, daily_attendance_summaries.branch_id)
+  (employee_leave_balances.employee_id, employee_leave_balances.year) [unique]
+  (payroll_records.employee_id, payroll_records.period) [unique]
+  (user_branch_roles.user_id, user_branch_roles.branch_id, user_branch_roles.role) [unique]
+}

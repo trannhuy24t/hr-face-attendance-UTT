@@ -1,24 +1,22 @@
 import { apiFetch } from "../../lib/httpClient";
-import type { BiometricStatusResponse, SettingsResponse } from "./settings.types";
+import type { TenantSettings } from "./settings.types";
 
-export function fetchSettings(signal?: AbortSignal) {
-  return apiFetch<SettingsResponse>("/api/v1/settings", { signal });
+export function fetchTenantSettings(signal?: AbortSignal) {
+  return apiFetch<TenantSettings>("/api/v1/organization/settings", { signal });
 }
 
-export interface BiometricStatusQuery {
-  branch: string;
-  department: string;
-  pendingOnly: boolean;
+export interface UpdateTenantSettingsPayload {
+  faceMatchThreshold?: number;
+  maxFaceRetries?: number;
 }
 
-export function fetchBiometricStatus(query: BiometricStatusQuery, signal?: AbortSignal) {
-  const params = new URLSearchParams();
-  if (query.branch !== "Tất cả") params.set("branch", query.branch);
-  if (query.department !== "Tất cả") params.set("department", query.department);
-  if (query.pendingOnly) params.set("pendingOnly", "true");
-
-  return apiFetch<BiometricStatusResponse>(
-    `/api/v1/employees/biometric-status?${params.toString()}`,
-    { signal },
-  );
+export function updateTenantSettings(
+  payload: UpdateTenantSettingsPayload,
+  signal?: AbortSignal,
+) {
+  return apiFetch<TenantSettings>("/api/v1/organization/settings", {
+    method: "PATCH",
+    body: payload,
+    signal,
+  });
 }

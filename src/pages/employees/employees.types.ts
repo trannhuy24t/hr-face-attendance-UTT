@@ -1,38 +1,74 @@
 import type { BadgeTone } from "../../lib/badge";
 
-export type BiometricStatus = "reviewed" | "pending" | "draft" | "locked";
-export type AttendanceStatus = "present" | "late" | "absent";
+export type EmployeeStatus = "active" | "probation" | "suspended" | "terminated";
 
-export interface EmployeeRow {
+// Kept for the Attendance/Payroll mock pages, which have no backing API yet
+// (see project notes) and still import this placeholder type.
+export type BiometricStatus = "reviewed" | "pending" | "draft" | "locked";
+
+export interface BranchRef {
   id: string;
   name: string;
-  role: string;
-  code: string;
-  department: string;
-  branch: string;
-  biometricStatus: BiometricStatus;
-  biometricMeta: string;
-  status: AttendanceStatus;
 }
 
-export interface EmployeeListResponse {
-  branches: string[];
-  departments: string[];
-  total: number;
-  page: number;
-  pageSize: number;
-  employees: EmployeeRow[];
+export interface DepartmentRef {
+  id: string;
+  name: string;
 }
 
-export const BIOMETRIC_LABEL: Record<BiometricStatus, { label: string; tone: BadgeTone }> = {
-  reviewed: { label: "Đã đăng ký", tone: "success" },
-  pending: { label: "Chờ duyệt", tone: "warning" },
-  draft: { label: "Chưa đăng ký", tone: "neutral" },
-  locked: { label: "Đã khoá", tone: "danger" },
+export interface Employee {
+  id: string;
+  employeeCode: string;
+  fullName: string;
+  branchId: string;
+  departmentId: string | null;
+  status: EmployeeStatus;
+  terminationDate: string | null;
+  branch: BranchRef;
+  department: DepartmentRef | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const EMPLOYEE_STATUS_LABEL: Record<EmployeeStatus, { label: string; tone: BadgeTone }> = {
+  active: { label: "Đang làm việc", tone: "success" },
+  probation: { label: "Thử việc", tone: "info" },
+  suspended: { label: "Tạm đình chỉ", tone: "warning" },
+  terminated: { label: "Đã nghỉ việc", tone: "danger" },
 };
 
-export const ATTENDANCE_STATUS_LABEL: Record<AttendanceStatus, { label: string; tone: BadgeTone }> = {
-  present: { label: "Present", tone: "success" },
-  late: { label: "Late", tone: "warning" },
-  absent: { label: "Absent", tone: "danger" },
+// Mirrors the backend's VALID_STATUS_TRANSITIONS map (employees.service.ts)
+// so the UI only ever offers transitions the API will accept.
+export const EMPLOYEE_STATUS_TRANSITIONS: Record<EmployeeStatus, EmployeeStatus[]> = {
+  probation: ["active", "suspended", "terminated"],
+  active: ["probation", "suspended", "terminated"],
+  suspended: ["active", "terminated"],
+  terminated: [],
 };
+
+export type PayBasis = "hourly" | "daily" | "shift" | "monthly";
+export type ContractType = "full_time" | "part_time" | "internship";
+
+export const PAY_BASIS_LABEL: Record<PayBasis, string> = {
+  hourly: "Theo giờ",
+  daily: "Theo ngày",
+  shift: "Theo ca",
+  monthly: "Theo tháng",
+};
+
+export const CONTRACT_TYPE_LABEL: Record<ContractType, string> = {
+  full_time: "Toàn thời gian",
+  part_time: "Bán thời gian",
+  internship: "Thực tập",
+};
+
+export interface CompensationRecord {
+  id: string;
+  employeeId: string;
+  branchId: string;
+  contractType: ContractType;
+  payBasis: PayBasis;
+  rate: number | string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}

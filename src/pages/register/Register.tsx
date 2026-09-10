@@ -14,7 +14,7 @@ import {
   CheckCircleOutlined,
 } from "@ant-design/icons";
 import { registerTenant } from "../../features/auth/auth.api";
-import { setAccessToken } from "../../features/auth/authSession";
+import { setAccessToken, setCurrentUser } from "../../features/auth/authSession";
 import { ApiError } from "../../lib/httpClient";
 
 export default function RegisterPage() {
@@ -48,9 +48,15 @@ export default function RegisterPage() {
     })
       .then((response) => {
         setAccessToken(response.access_token);
+        setCurrentUser({
+          id: response.user.id,
+          email: response.user.email,
+          fullName: response.user.fullName,
+          roles: [{ branch_id: null, role: "owner" }],
+        });
         setDone(true);
         window.setTimeout(() => {
-          window.location.hash = "dashboard";
+          window.location.hash = "employees";
         }, 1200);
       })
       .catch((error: unknown) => {

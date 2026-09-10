@@ -27,3 +27,10 @@ export interface LoginResponseData {
   user: { id: string; email: string; fullName: string; roles: UserRole[] };
   access_token: string;
 }
+
+export interface CurrentUser {
+  id: string;
+  email: string;
+  fullName: string;
+  roles: UserRole[];
+}

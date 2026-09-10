@@ -30,7 +30,7 @@ export function refreshAccessToken(signal?: AbortSignal) {
 }
 
 export function logout(signal?: AbortSignal) {
-  return apiFetch<void>("/api/v1/auth/logout", {
+  return apiFetch<{ message: string }>("/api/v1/auth/logout", {
     method: "POST",
     signal,
   });

@@ -45,10 +45,10 @@ function extractMessage(payload: unknown, status: number): string {
   return DEFAULT_ERROR_MESSAGES[status] ?? "Đã có lỗi xảy ra, vui lòng thử lại.";
 }
 
-export async function apiFetch<T>(
+async function rawFetch(
   path: string,
-  { method = "GET", body, signal }: RequestOptions = {},
-): Promise<T> {
+  { method = "GET", body, signal }: RequestOptions,
+): Promise<unknown> {
   const accessToken = getAccessToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
@@ -70,7 +70,7 @@ export async function apiFetch<T>(
     throw new ApiError(response.status, extractMessage(payload, response.status));
   }
 
-  if (response.status === 204) return undefined as T;
+  if (response.status === 204) return undefined;
 
   if (!isJson) {
     throw new ApiError(
@@ -79,10 +79,47 @@ export async function apiFetch<T>(
     );
   }
 
+  return payload;
+}
+
+export async function apiFetch<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const payload = await rawFetch(path, options);
+
   // Standard success envelope: { success: true, data: {...}, meta?: {...} }
   if (payload && typeof payload === "object" && "success" in payload && "data" in payload) {
     return (payload as { data: T }).data;
   }
 
   return payload as T;
+}
+
+export interface PageMeta {
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+}
+
+// Same envelope as apiFetch, but also preserves the sibling `meta` block
+// that paginated list endpoints return alongside `data`.
+export async function apiFetchPage<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<{ data: T[]; meta: PageMeta }> {
+  const payload = await rawFetch(path, options);
+
+  if (payload && typeof payload === "object" && "data" in payload) {
+    const meta = (payload as { meta?: PageMeta }).meta ?? {
+      page: 1,
+      pageSize: (payload as { data: T[] }).data.length,
+      totalItems: (payload as { data: T[] }).data.length,
+      totalPages: 1,
+    };
+    return { data: (payload as { data: T[] }).data, meta };
+  }
+
+  return { data: (payload as T[]) ?? [], meta: { page: 1, pageSize: 0, totalItems: 0, totalPages: 1 } };
 }

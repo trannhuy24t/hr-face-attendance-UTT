@@ -10,7 +10,7 @@ import {
   WarningOutlined,
 } from "@ant-design/icons";
 import { login } from "../../features/auth/auth.api";
-import { setAccessToken } from "../../features/auth/authSession";
+import { setAccessToken, setCurrentUser } from "../../features/auth/authSession";
 import { ApiError } from "../../lib/httpClient";
 
 export default function LoginPage() {
@@ -29,7 +29,8 @@ export default function LoginPage() {
     login({ email, password })
       .then((response) => {
         setAccessToken(response.access_token);
-        window.location.hash = "dashboard";
+        setCurrentUser(response.user);
+        window.location.hash = "employees";
       })
       .catch((error: unknown) => {
         setFormError(

@@ -1,229 +1,162 @@
-import { useState } from "react";
-import { BellOutlined, SaveOutlined, WarningOutlined, ReloadOutlined } from "@ant-design/icons";
+import { useEffect, useState } from "react";
+import { SaveOutlined, WarningOutlined, ReloadOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import { AppShell } from "../../components/layout/AppShell";
-import { ChipFilter, ToggleChip } from "../../components/filters/ChipFilter";
 import { useAsyncData } from "../../lib/useAsyncData";
-import { initialsOf } from "../../lib/textUtils";
-import { fetchBiometricStatus, fetchSettings } from "./settings.api";
-import { BIOMETRIC_LABEL } from "./settings.types";
+import { ApiError } from "../../lib/httpClient";
+import { fetchTenantSettings, updateTenantSettings } from "./settings.api";
 
 export default function SettingsPage() {
-  const [tabKey, setTabKey] = useState<string | null>(null);
-  const [toggleOverrides, setToggleOverrides] = useState<Record<string, boolean>>({});
+  const [state, reload] = useAsyncData((signal) => fetchTenantSettings(signal), []);
 
-  const [settingsState, reloadSettings] = useAsyncData((signal) => fetchSettings(signal), []);
+  const [threshold, setThreshold] = useState("0.85");
+  const [maxRetries, setMaxRetries] = useState("3");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [saved, setSaved] = useState(false);
 
-  const [branch, setBranch] = useState("Tất cả");
-  const [department, setDepartment] = useState("Tất cả");
-  const [pendingOnly, setPendingOnly] = useState(false);
-  const [bioState, reloadBio] = useAsyncData(
-    (signal) => fetchBiometricStatus({ branch, department, pendingOnly }, signal),
-    [branch, department, pendingOnly],
-  );
+  useEffect(() => {
+    if (state.status === "success") {
+      setThreshold(String(state.data.faceMatchThreshold));
+      setMaxRetries(String(state.data.maxFaceRetries));
+    }
+  }, [state.status === "success" ? state.data : null]);
 
-  const tabs = settingsState.status === "success" ? settingsState.data.tabs : [];
-  const activeTab = tabs.find((tab) => tab.key === tabKey) ?? tabs[0] ?? null;
+  const handleSave = () => {
+    setSaveError("");
+    setSaved(false);
+
+    const thresholdValue = Number(threshold);
+    const maxRetriesValue = Number(maxRetries);
+
+    if (Number.isNaN(thresholdValue) || thresholdValue < 0.5 || thresholdValue > 1) {
+      setSaveError("Ngưỡng khớp khuôn mặt phải trong khoảng 0.5 - 1.0");
+      return;
+    }
+    if (!Number.isInteger(maxRetriesValue) || maxRetriesValue < 1 || maxRetriesValue > 10) {
+      setSaveError("Số lần thử lại phải là số nguyên trong khoảng 1 - 10");
+      return;
+    }
+
+    setSaving(true);
+    updateTenantSettings({
+      faceMatchThreshold: thresholdValue,
+      maxFaceRetries: maxRetriesValue,
+    })
+      .then(() => setSaved(true))
+      .catch((error: unknown) => {
+        setSaveError(
+          error instanceof ApiError
+            ? error.message
+            : "Không thể kết nối tới máy chủ, vui lòng thử lại.",
+        );
+      })
+      .finally(() => setSaving(false));
+  };
 
   return (
     <AppShell
       activeKey="settings"
       title="Cài đặt hệ thống"
-      subtitle={settingsState.status === "success" ? settingsState.data.companyMeta : undefined}
-      actions={
-        <>
-          <button className="btn btn-outline btn-sm" type="button">
-            Hoàn tác
-          </button>
-          <button className="btn btn-primary btn-sm" type="button">
-            <SaveOutlined />
-            Lưu thay đổi
-          </button>
-        </>
+      subtitle={
+        state.status === "success" ? `Tenant ID: ${state.data.tenantId}` : undefined
       }
     >
-      {settingsState.status === "error" ? (
+      {state.status === "error" ? (
         <div className="card empty-state">
           <WarningOutlined style={{ fontSize: 28, color: "var(--color-danger)" }} />
-          <p>{settingsState.message}</p>
-          <button className="btn btn-outline btn-sm mt-2" type="button" onClick={reloadSettings}>
+          <p>{state.message}</p>
+          <button className="btn btn-outline btn-sm mt-2" type="button" onClick={reload}>
             <ReloadOutlined />
             Thử lại
           </button>
         </div>
       ) : (
-        <div className="settings-grid">
-          <div className="card side-tabs">
-            {settingsState.status === "loading"
-              ? Array.from({ length: 5 }).map((_, index) => (
-                  <div key={index} className="skeleton" style={{ height: 36 }} />
-                ))
-              : tabs.map((tab) => (
-                  <div
-                    key={tab.key}
-                    className={`side-tab${tab.key === activeTab?.key ? " is-active" : ""}`}
-                    onClick={() => setTabKey(tab.key)}
-                  >
-                    <span>{tab.label}</span>
-                    <span className="side-tab-count">{tab.settings.length}</span>
-                  </div>
-                ))}
-          </div>
+        <div className="card" style={{ maxWidth: 520, padding: 24 }}>
+          <h2 className="text-sm" style={{ fontWeight: 500 }}>
+            Cấu hình nhận diện khuôn mặt
+          </h2>
+          <p className="text-xs text-muted mt-1">
+            Áp dụng cho toàn bộ Kiosk chấm công của doanh nghiệp.
+          </p>
 
-          <div className="flex flex-col gap-4">
-            {settingsState.status === "loading" ? (
-              <div className="card">
-                <div className="skeleton" style={{ height: 240 }} />
-              </div>
-            ) : activeTab ? (
-              <div className="card settings-panel">
-                <div>
-                  <h2 className="text-sm" style={{ fontWeight: 500 }}>
-                    {activeTab.label}
-                  </h2>
-                  <p className="text-xs text-muted mt-1">{activeTab.description}</p>
-                </div>
-
-                {activeTab.settings.map((setting) => {
-                  const on = toggleOverrides[setting.key] ?? setting.on ?? false;
-                  return (
-                    <div key={setting.key} className="setting-row">
-                      <div className="setting-copy">
-                        <strong>{setting.label}</strong>
-                        <small>{setting.hint}</small>
-                      </div>
-                      {setting.isToggle ? (
-                        <div
-                          className={`switch${on ? " is-on" : ""}`}
-                          onClick={() =>
-                            setToggleOverrides((prev) => ({ ...prev, [setting.key]: !on }))
-                          }
-                        >
-                          <span className="switch-thumb" />
-                        </div>
-                      ) : (
-                        <div className="setting-value">{setting.value}</div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="card empty-state">Chưa có mục cài đặt nào để hiển thị.</div>
-            )}
-
-            <div className="card">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-sm" style={{ fontWeight: 500 }}>
-                    Đăng ký sinh trắc học theo nhân viên
-                  </h2>
-                  <p className="text-xs text-muted mt-1">
-                    {bioState.status === "success" ? bioState.data.metaLabel : ""}
-                  </p>
-                </div>
-                <button className="btn btn-outline btn-sm" type="button">
-                  <BellOutlined />
-                  Gửi nhắc đăng ký
-                </button>
-              </div>
-
-              <div className="filter-bar" style={{ padding: "16px 0 0" }}>
-                <ChipFilter
-                  label="Chi nhánh"
-                  options={["Tất cả", ...(bioState.status === "success" ? bioState.data.branches : [])]}
-                  value={branch}
-                  onChange={setBranch}
-                />
-                <ChipFilter
-                  label="Phòng ban"
-                  options={[
-                    "Tất cả",
-                    ...(bioState.status === "success" ? bioState.data.departments : []),
-                  ]}
-                  value={department}
-                  onChange={setDepartment}
-                />
-                <div className="filter-spacer">
-                  <ToggleChip active={pendingOnly} onClick={() => setPendingOnly((v) => !v)}>
-                    Chưa đăng ký sinh trắc học
-                  </ToggleChip>
-                </div>
-              </div>
-
-              {bioState.status === "error" ? (
-                <div className="empty-state">
-                  <p>{bioState.message}</p>
-                  <button className="btn btn-outline btn-sm mt-2" type="button" onClick={reloadBio}>
-                    <ReloadOutlined />
-                    Thử lại
-                  </button>
-                </div>
-              ) : (
-                <div className="table-wrap mt-2">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th></th>
-                        <th>Nhân viên</th>
-                        <th>Phòng ban</th>
-                        <th>Chi nhánh</th>
-                        <th>Sinh trắc học</th>
-                        <th style={{ textAlign: "right" }}>Cập nhật</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bioState.status === "loading"
-                        ? Array.from({ length: 4 }).map((_, index) => (
-                            <tr key={index}>
-                              <td colSpan={6}>
-                                <div className="skeleton" style={{ height: 20 }} />
-                              </td>
-                            </tr>
-                          ))
-                        : bioState.data.rows.map((row) => {
-                            const bio = BIOMETRIC_LABEL[row.biometricStatus];
-                            return (
-                              <tr key={row.id}>
-                                <td>
-                                  <div className="avatar">{initialsOf(row.name)}</div>
-                                </td>
-                                <td>
-                                  <div className="cell-copy">
-                                    <strong>{row.name}</strong>
-                                    <small>{row.code}</small>
-                                  </div>
-                                </td>
-                                <td>{row.department}</td>
-                                <td>{row.branch}</td>
-                                <td>
-                                  <span className={`badge badge-${bio.tone}`}>{bio.label}</span>
-                                </td>
-                                <td className="text-xs text-muted" style={{ textAlign: "right" }}>
-                                  {row.biometricMeta}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                    </tbody>
-                  </table>
-                  {bioState.status === "success" && bioState.data.rows.length === 0 ? (
-                    <div className="table-empty">Không có nhân viên nào khớp bộ lọc hiện tại.</div>
-                  ) : null}
-                </div>
-              )}
-
-              {bioState.status === "success" ? (
-                <div className="table-foot">
-                  <span>
-                    Hiển thị {bioState.data.rows.length} / {bioState.data.totalCount} nhân viên
-                  </span>
-                  <a className="link-primary text-xs" href="#">
-                    Xuất danh sách chưa đăng ký
-                  </a>
+          {state.status === "loading" ? (
+            <div className="flex flex-col gap-4 mt-6">
+              <div className="skeleton" style={{ height: 44 }} />
+              <div className="skeleton" style={{ height: 44 }} />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4 mt-6">
+              {saveError ? (
+                <div className="alert alert-danger">
+                  <WarningOutlined />
+                  <span>{saveError}</span>
                 </div>
               ) : null}
+              {saved ? (
+                <div className="alert alert-success">
+                  <CheckCircleOutlined />
+                  <span>Đã lưu cấu hình thành công.</span>
+                </div>
+              ) : null}
+
+              <div className="form-group">
+                <label className="label" htmlFor="faceMatchThreshold">
+                  Ngưỡng khớp khuôn mặt (0.5 – 1.0)
+                </label>
+                <input
+                  id="faceMatchThreshold"
+                  className="input"
+                  style={{ paddingInline: 12 }}
+                  type="number"
+                  step="0.01"
+                  min="0.5"
+                  max="1"
+                  value={threshold}
+                  onChange={(event) => {
+                    setThreshold(event.target.value);
+                    setSaved(false);
+                  }}
+                />
+                <span className="text-xs text-muted">
+                  Cao hơn → chính xác hơn nhưng dễ từ chối nhầm. Khuyến nghị 0.80 – 0.90.
+                </span>
+              </div>
+
+              <div className="form-group">
+                <label className="label" htmlFor="maxFaceRetries">
+                  Số lần thử lại tối đa (1 – 10)
+                </label>
+                <input
+                  id="maxFaceRetries"
+                  className="input"
+                  style={{ paddingInline: 12 }}
+                  type="number"
+                  step="1"
+                  min="1"
+                  max="10"
+                  value={maxRetries}
+                  onChange={(event) => {
+                    setMaxRetries(event.target.value);
+                    setSaved(false);
+                  }}
+                />
+                <span className="text-xs text-muted">
+                  Vượt quá số lần này, Kiosk sẽ chuyển sang mã PIN/QR dự phòng.
+                </span>
+              </div>
+
+              <button
+                className="btn btn-primary"
+                type="button"
+                disabled={saving}
+                onClick={handleSave}
+                style={{ alignSelf: "flex-start" }}
+              >
+                <SaveOutlined />
+                {saving ? "Đang lưu..." : "Lưu thay đổi"}
+              </button>
             </div>
-          </div>
+          )}
         </div>
       )}
     </AppShell>
